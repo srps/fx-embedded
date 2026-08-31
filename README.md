@@ -1,13 +1,69 @@
 # fx-embedded
 
 The [fx](https://github.com/vercel-labs/fx) agent harness, compiled to
-WebAssembly, **running entirely on the Switch**. No bridge, no PC — the
-console boots fx's real terminal UI, talks to the AI Gateway over WiFi, and
-keeps sessions on the SD card.
+WebAssembly, **running entirely on a Nintendo Switch**. No bridge, no PC —
+the console boots fx's real terminal UI, talks to the
+[Vercel AI Gateway](https://vercel.com/docs/ai-gateway) over WiFi, and keeps
+sessions on the SD card.
 
 ```
 AI Gateway <--HTTPS/WiFi-- fx-term.wasm (V8+JSPI, on Switch) <--ANSI--> fx TUI on screen
 ```
+
+## What works (on device)
+
+- The full fx terminal UI — streaming responses, markdown, interleaved
+  tool-call rendering, scrollback.
+- Tool calls: fx's standard `terminal` workspace tool, backed by a
+  root-confined command interpreter over `sdmc:/switch/fx-embedded/workspace/`
+  (`pwd ls find cat head wc rg echo printf mkdir touch cp mv rm stat`,
+  `&&`/`;`, output redirection; no traversal out of the root, no pipelines).
+- Input: the inline software keyboard (tap or X; **+** sends), USB and
+  Bluetooth keyboards typing straight into the prompt, Ctrl+C (or Y) to
+  cancel a stream mid-flight.
+- Sleep/wake: close the lid mid-stream, wake, resend — the runtime detects
+  the wake, resets the socket layer, and the app tells you the connection
+  was lost. No crashes, no zombie networking.
+- Sessions persist under `sdmc:/switch/fx-embedded/term/`; `"resume": true`
+  picks up the newest one at boot.
+
+## Requirements
+
+- Switch running [Atmosphère](https://github.com/Atmosphere-NX/Atmosphere)
+  with hbmenu (tested: Atmosphère 1.11.2, firmware 21.1).
+- Launch via **title takeover** (hold R on a game): WebAssembly needs the
+  application memory regime — applet mode is too tight for V8's JIT arena.
+- An AI Gateway API key.
+- The patched [nx.js](https://github.com/TooTallNate/nx.js) V8 runtime this
+  app is developed against (keyboard, sleep/wake, and fetch fixes are being
+  upstreamed; until they land, build the runtime from the fork).
+
+## Setup
+
+1. Copy `fx-embedded-fat.nro` (self-contained: runtime + app + wasm) to
+   `sdmc:/switch/fx-embedded/fx-embedded.nro`, or use
+   `bun run deploy` with hbmenu's netloader (**Y**). The slim NRO variant
+   chainloads a shared `sdmc:/nx.js/` runtime instead.
+2. Create `sdmc:/switch/fx-embedded/config.json`:
+
+   ```json
+   { "env": { "AI_GATEWAY_API_KEY": "...", "FX_MODEL": "moonshotai/kimi-k3" } }
+   ```
+
+   `FX_MODEL` is the supported way to pick a model on device (`/model` works
+   in the TUI but its catalog fetch rides the one host import that is still
+   a device experiment — see design notes). Add `"resume": true` to resume
+   the newest session at boot.
+3. Hold R on a game → hbmenu → fx-embedded.
+
+An API key is currently required: without one the app prints an actionable
+boot message and exits — it does not enter OAuth (see design notes).
+
+## Controls
+
+A enter · B esc · X keyboard · Y ctrl-C · d-pad arrows · L/R pgup/pgdn ·
+ZL/ZR scrollback · Minus exit · Plus sends while the keyboard is up,
+otherwise clean exit. USB/Bluetooth keyboards type directly; Ctrl+C works.
 
 ## How it works
 
@@ -21,142 +77,82 @@ AI Gateway <--HTTPS/WiFi-- fx-term.wasm (V8+JSPI, on Switch) <--ANSI--> fx TUI o
 - TUI output is real ANSI, rendered by the runtime's headless-xterm canvas
   Console (`src/fxwasm/screen.ts`); the host also answers fx's terminal
   probes (color scheme, OSC 11 background + DA1 fence) on stdin.
-- Input: USB/system keyboards produce terminal bytes; Joy-Con: A enter ·
-  B esc · X keyboard · Y ctrl-C · d-pad arrows · L/R pgup/pgdn · ZL/ZR
-  scrollback · Minus exit · Plus: Send while the keyboard is up, otherwise
-  clean exit.
-- The host exposes fx's standard `terminal` workspace tool. There is no OS
-  shell on Horizon, so commands are handled by a small root-confined
-  interpreter backed by `sdmc:/switch/fx-embedded/workspace/`. It supports
-  `pwd`, `ls`, `find`, `cat`, `head`, `wc`, `rg`, `echo`, `printf`, `mkdir`,
-  `touch`, `cp`, `mv`, `rm`, `stat`, `&&`, `;`, and output redirection.
-  Traversal outside the virtual `/workspace` root and shell pipelines are
-  rejected.
-- Config, prompt history, and fx sessions persist under
-  `sdmc:/switch/fx-embedded/term/`.
+- Wasm changes ride in the NRO; a build dropped at
+  `sdmc:/switch/fx-embedded/fx-term.wasm` overrides the romfs copy for fast
+  iteration.
 
-## Setup (one-time)
+## Design notes
 
-1. The locally built V8 runtime
-   (`../nx.js/nxjs.nro`, installed as
-   `sdmc:/nx.js/nxjs-v1.0.0-beta.15.nro`). The app is a slim NRO and
-   chainloads this shared runtime.
-2. `bun run deploy` → pushes `sdmc:/switch/fx-embedded/fx-embedded.nro`
-   (hbmenu → **Y** netloader, or an SD copy).
-3. Launch via **title takeover: hold R on a game** when starting hbmenu —
-   WebAssembly needs the application memory regime (`romfs/nxjs.ini`
-   reserves 64 MiB of JIT code headroom; applet mode is too tight).
-4. Optional `sdmc:/switch/fx-embedded/config.json` (`"resume": true` lets fx
-   resume the newest SD session at boot; default is a fresh session):
+**The network path is fully synchronous by design.** On this V8 build,
+resuming a JSPI-suspended wasm import from inside the fetch callback chain
+aborts the process (symbolicated to the wasm import-wrapper/resume
+machinery; not yet reduced to a host-independent V8 report). So the fx
+side carries a small patch (the fx checkout's `switch-patches` branch):
+the stream poller sleeps 10 ms via WASI `poll_oneoff` — the proven-safe,
+timer-resumed suspend — before each not-ready poll, and the host's
+`fx_http_stream_status/next` imports never suspend. Input-path suspends
+(`fd_read`, `poll_oneoff`) are exercised thousands of times per session
+and are stable. OAuth's request/response import would ride the unsafe
+path, which is why sign-in is disabled and an API key is required.
 
-   ```json
-   { "env": { "AI_GATEWAY_API_KEY": "...", "FX_MODEL": "..." } }
-   ```
+**Sleep/wake is handled by the runtime, not the app.** A console sleep
+kills the bsd socket session process-wide; using a stale session asserts
+the `bsdsocket` sysmodule and takes networking down system-wide until
+reboot. The patched nx.js runtime classifies frame gaps (CPU-busy vs
+blocking-SD-op vs sleep), resets the socket layer on wake, settles
+in-flight TLS reads with `ECONNRESET`, recreates libuv's self-wake pair,
+and defers ambiguous cases to a reset-before-next-dispatch gate. The app
+just shows "connection lost during sleep — send the prompt again".
 
-   `FX_MODEL` is the supported way to pick a model on device: `/model` works
-   in the TUI but loads its catalog through `fx_http_request`, the JSPI
-   suspending import that is still a device experiment.
-
-   An API key is currently required. Without it the app shows an actionable
-   boot message and returns; it does not enter OAuth.
-
-## Networking & sign-in (read before first login)
-
-OAuth is intentionally disabled for now. It uses the request/response host
-import, whose Promise resumes through the fetch callback path involved in the
-observed V8/JSPI crashes. API-key model traffic instead uses the synchronous
-stream imports described below.
-
-### Crash forensics (2026-08-28)
-
-Two symptoms, one boot: picking Sign-in crashed Atmosphere (2349-0004, all
-zero registers); next day, keyboard input never rendered, then a crash at
-reply time (2345-0008, hbloader, `User Break`). Findings from the pulled
-crash reports, symbolicated against the runtime's `nxjs.elf` (devkitA64
-addr2line; base anchored on `v8::base::OS::Abort`, all frames resolve):
-
-- **TLS is fine**: the boot canary hits `https://ai-gateway.vercel.sh/` →
-  HTTP 200, and the prompt POST to `/v3/ai/language-model` went out.
-- The abort reports resolve into the **V8 JSPI wasm import-wrapper/resume
-  machinery** (frames consistently attribute to
-  `CompileWasmImportCallWrapper(…, Suspend)` / `Debug::OnException` /
-  `PerformSideEffectCheckForCallback` across both reports): it fires when a
-  Suspending import's promise resolves from inside the fetch callback chain.
-  Input-path suspends (`fd_read`/`poll_oneoff`) worked in the same sessions.
-  This is strong attribution, but it is not yet a minimal host-independent
-  JSPI reproduction suitable for an upstream V8 report.
-- `𝒇` tofu: fx's wordmark is U+1D487, which Geist Mono lacks (browsers fall
-  back to system fonts; the runtime can't). The app maps the mathematical
-  latin ranges to ASCII.
-
-Mitigations shipped:
-- **fx itself is patched (../fx `src/gateway/host_stream_provider.zig`)** to
-  sleep 10 ms (`io_mod.sleep`, lowering to wasi poll_oneoff) before each
-  not-ready stream poll — status/next/before-read, three call sites. The
-  host imports (`fx_http_stream_status/next`) are therefore FULLY
-  SYNCHRONOUS in `runtime.ts`: zero JSPI cycles on the network path. The
-  sleep is the proven-safe suspend pattern (timer-resumed, exercised
-  thousands of times by the idle loop). The patch lives on the fx
-  checkout's `switch-patches` branch. This is an adapter-specific workaround, not yet a
-  proven generic fx bug: upstream's SDK transport is asynchronous and does
-  not use this synchronous polling design.
-- the rAF loop and the `fd_write`→terminal side-channel are
-  exception-guarded (a render error logs to `fx-embedded.log` and shows a
-  red line instead of freezing the screen or aborting V8).
-- `𝒇` glyph mapped to `f`; **streaming indicator** in the status bar
-  (animated dots) driven by stream open/end events.
-- OAuth's `fx_http_request` stays suspend-based and is not entered by the app.
-- SD breadcrumbs use synchronous append and, on the local patched nx.js
-  runtime, `fsdevCommitDevice("sdmc")` after each line. That improves the
-  durability boundary, but missing logs alone do not prove this was their
-  root cause. Each boot writes both `sdmc:/switch/fx-embedded.log` and a
-  unique `sdmc:/switch/fx-embedded/logs/fx-embedded-<epoch>.log` so MTP/DBI
-  cannot silently serve an older run under the same filename.
-- exit path settles 1.2 s before `Switch.exit()` so socket teardown
-  finishes before the process is torn down.
+**Rendering fidelity is testable off-device.** `host/render-capture.ts`
+records the raw TUI byte stream against a real gateway;
+`host/replay-xterm.ts` replays it through the same headless xterm the
+console uses, at device geometry — pixel-for-pixel forensics without
+touching the Switch.
 
 ## Iterate
 
 ```sh
 bun run wasm        # build/copy fx-term.wasm into romfs (FX_ZIG/FX_DIR overridable)
 bun run build       # bundle src/main.ts -> romfs/main.js (esbuild)
-bun run nro         # pack the NRO (romfs: main.js + nxjs.ini + fx-term.wasm)
-bun run nro:fat     # also build one self-contained NRO with the local nx.js runtime
-bun run deploy      # all of the above + netloader push
+bun run nro         # pack the slim NRO
+bun run nro:fat     # self-contained NRO with the local ../nx.js runtime
+bun run deploy      # build + pack + netloader push
 bun run check       # TypeScript contract check
 bun run term:stream # deterministic mock streaming through the real wasm
 bun run term:workspace # deterministic two-turn terminal-tool proof
 bun run term:input  # whole-line stdin fidelity (swkbd submits one chunk)
 bun run term:model  # /model picker path (uses the Suspending fx_http_request import)
-bun run term:exit   # exit during an endless 429 retry must settle (host-loop starvation guard)
+bun run term:exit   # exit during an endless 429 retry must settle
 bun run term:smoke  # real Gateway smoke when .env supplies a key/model
 bun run test:push   # byte-verify the netloader pusher against a mock hbmenu
 ```
 
-Wasm changes ride in the NRO (redeploy); to iterate on the wasm without a
-push, drop a fresh build at `sdmc:/switch/fx-embedded/fx-term.wasm` — it
-overrides the romfs copy.
+The host tests boot the same `romfs/fx-term.wasm` through the same host
+layer under JSPI. `term:workspace` goes beyond a mocked import: a fake
+Gateway asks the real fx agent loop to call `terminal`, the adapter creates
+a file, and fx returns the tool result in a second model request.
+`term:smoke` requires a live backend and only passes on HTTP 200 + model
+stream bytes + clean completion.
 
-`scripts/bundle.sh` falls back to a Linux esbuild from a sibling checkout when
-`node_modules` was installed from Windows (win32 binary under WSL).
+`scripts/bundle.sh` falls back to a Linux esbuild from a sibling checkout
+when `node_modules` was installed from Windows (win32 binary under WSL).
 
-App JS-only changes technically ship in the NRO too (this is a standalone
-app — no live-bundle heal like fx-switch; rebuild + push is the loop).
+## Upstream
 
-The normal artifact is slim (5 MB) and uses the shared runtime. For the
-literal single-file demo, `fx-embedded-fat.nro` embeds the freshly built local
-`../nx.js/nxjs.nro`; use `bun run push:fat` while hbmenu's netloader is armed.
+Work found and fixed along the way, in various stages of upstreaming:
 
-## Host-side verification
+- **fx**: WASI builds emitted constant debug-trace ids, which merged all
+  tool-call presentation groups into one block (fix on `switch-patches`,
+  PR-ready). Opt-in stream poll pacing for synchronous hosts.
+- **nx.js**: global `addEventListener` never installed (USB/Bluetooth
+  keyboards were unreachable in every app); fetch abort throwing on locked
+  body streams; unhandled rejection in `Socket#close()` on errored streams;
+  the sleep/wake socket-session reset machinery; inline swkbd cursor bug
+  (text discarded after the first session) and the swkbd applet leak across
+  app exit — see
+  [swkbd-leak-repro](https://github.com/srps/swkbd-leak-repro).
 
-The host tests boot the same `romfs/fx-term.wasm` through the same host layer
-under JSPI. `term:workspace` goes further than a mocked import: a fake Gateway
-asks the real fx agent loop to call `terminal`, the adapter creates a file,
-and fx returns the tool result in a second model request. It also checks root
-confinement, pipeline rejection, and the filesystem-commit hook.
+## License
 
-`term:smoke` requires a live backend. It only passes when it observes HTTP
-200, model stream bytes, and clean stream completion; a Gateway 503 is
-reported as a failed live check rather than mistaken for model output.
-
-
+MIT
