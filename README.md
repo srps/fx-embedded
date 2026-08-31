@@ -9,10 +9,6 @@ keeps sessions on the SD card.
 AI Gateway <--HTTPS/WiFi-- fx-term.wasm (V8+JSPI, on Switch) <--ANSI--> fx TUI on screen
 ```
 
-Sibling to [fx-switch](../fx-switch) (the bridge client): that one runs fx
-on the PC with full shell tools; this one runs fx on the console with no PC
-in the loop at all.
-
 ## How it works
 
 - `fx-term.wasm` — fx built with `zig build -Dwasm-surface=term` (plain WASI
@@ -59,7 +55,7 @@ in the loop at all.
 
    `FX_MODEL` is the supported way to pick a model on device: `/model` works
    in the TUI but loads its catalog through `fx_http_request`, the JSPI
-   suspending import that is still a device experiment (see JOURNAL).
+   suspending import that is still a device experiment.
 
    An API key is currently required. Without it the app shows an actionable
    boot message and returns; it does not enter OAuth.
@@ -100,8 +96,8 @@ Mitigations shipped:
   host imports (`fx_http_stream_status/next`) are therefore FULLY
   SYNCHRONOUS in `runtime.ts`: zero JSPI cycles on the network path. The
   sleep is the proven-safe suspend pattern (timer-resumed, exercised
-  thousands of times by the idle loop). `git diff ../fx` shows the patch —
-  keep it across fx pulls. This is an adapter-specific workaround, not yet a
+  thousands of times by the idle loop). The patch lives on the fx
+  checkout's `switch-patches` branch. This is an adapter-specific workaround, not yet a
   proven generic fx bug: upstream's SDK transport is asynchronous and does
   not use this synchronous polling design.
 - the rAF loop and the `fd_write`→terminal side-channel are
@@ -117,8 +113,7 @@ Mitigations shipped:
   unique `sdmc:/switch/fx-embedded/logs/fx-embedded-<epoch>.log` so MTP/DBI
   cannot silently serve an older run under the same filename.
 - exit path settles 1.2 s before `Switch.exit()` so socket teardown
-  finishes (an ftpd data abort in hbloader followed one of our sessions —
-  possibly a poisoned bsd session, the JOURNAL's documented fragility).
+  finishes before the process is torn down.
 
 ## Iterate
 
@@ -164,19 +159,4 @@ confinement, pipeline rejection, and the filesystem-commit hook.
 200, model stream bytes, and clean stream completion; a Gateway 503 is
 reported as a failed live check rather than mistaken for model output.
 
-## Current bug-report threshold
 
-- **Ready to report to nx.js:** `UV_DISCONNECT` was dropped when it did not
-  match the active poll interest. The local patch surfaces an error to JS and
-  has a host regression test (`../nx.js/packages/runtime/test/tcp-host.test.ts`).
-- **Useful experiment, not a proven bug:** explicit SD filesystem commit for
-  crash breadcrumbs. libnx documents the commit boundary, and the patched
-  runtime compiles, but an on-device kill/abort matrix is still needed.
-- **Not ready to report:** the fx 10 ms polling patch and the V8/JSPI crash.
-  Both need a smaller reproduction that removes this app's custom transport.
-- **Retired hypothesis:** short versus long screen-off duration. Current
-  evidence does not support a duration threshold; tests should treat any
-  suspend/resume as the same event class.
-
-Traps and wire facts are documented in fx-switch's `docs/JOURNAL.md`
-(v0.11.0 entry covers this host layer in depth).

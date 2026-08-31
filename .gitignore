@@ -8,3 +8,4 @@ debug/mtp/config.json
 artifacts/
 .zig-cache/
 bun.lock?
+debug/
