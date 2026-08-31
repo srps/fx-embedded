@@ -554,7 +554,19 @@ function createRuntime(options: FxTermOptions) {
     if (state) state.readError = state.readError ?? new Error("stream closed");
     if (state && !state.ended) {
       state.ended = true;
-      emit("stream.end", { handle });
+      // Carry the real failure into the event: fx closes a failed stream
+      // AFTER streamNext returned -1, so without this the log shows a clean
+      // "stream end" and the status bar never says WHY (device run
+      // 2026-08-31: post-wake "TLS connection is closed" surfaced as a bare
+      // stream end + an unhandled rejection, and the "connection lost during
+      // sleep" hint never appeared).
+      const error = state.readError ?? state.responseError;
+      emit("stream.end", {
+        handle,
+        ...(error && String(error) !== "Error: stream closed"
+          ? { error: String(error).slice(0, 120) }
+          : {}),
+      });
     }
   }
   // (streamClose is wired into the fx import table below as fx_http_stream_close.)
