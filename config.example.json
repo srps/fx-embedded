@@ -1,0 +1,6 @@
+{
+  "env": {
+    "AI_GATEWAY_API_KEY": "PASTE-YOUR-KEY-HERE",
+    "FX_MODEL": "moonshotai/kimi-k3"
+  }
+}

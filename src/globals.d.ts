@@ -1,0 +1,2 @@
+declare const Switch: any;
+

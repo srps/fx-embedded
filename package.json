@@ -1,0 +1,29 @@
+{
+  "name": "fx-embedded",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nintendo Switch app embedding the fx agent: fx-term.wasm runs on-device via V8+JSPI, no PC needed",
+  "scripts": {
+    "wasm": "bash scripts/wasm.sh",
+    "build": "bun run wasm && bash scripts/bundle.sh",
+    "nro": "nxjs-nro",
+    "nro:fat": "bun run nro && bash scripts/nro-fat.sh",
+    "deploy": "bun run build && bun run nro && bun run push",
+    "push": "bun host/push.ts fx-embedded.nro --name fx-embedded/fx-embedded.nro",
+    "push:fat": "bun host/push.ts fx-embedded-fat.nro --name fx-embedded/fx-embedded.nro",
+    "test:push": "bun host/mock-hbmenu.ts fx-embedded.nro 28280 & sleep 1 && bun host/push.ts fx-embedded.nro --ip 127.0.0.1 --name fx-embedded/fx-embedded.nro; kill %1 2>/dev/null",
+    "term:smoke": "bun host/term-smoke.ts",
+    "term:stream": "bun host/stream-test.ts",
+    "term:workspace": "bun host/workspace-test.ts",
+    "term:input": "bun host/input-test.ts",
+    "term:model": "bun host/model-cmd-test.ts",
+    "term:exit": "bun host/exit-test.ts",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.2",
+    "@nx.js/nro": "1.0.0-beta.6",
+    "@nx.js/constants": "0.4.1"
+  }
+}

@@ -1,0 +1,13 @@
+[v8] code arena: WASM headroom = 64 MiB (regime default)
+[v8] mem_total=3189 MiB free=3 MiB regime=application -> mode=jit (Ignition+Sparkplug+Maglev+TurboFan)
+[v8] max_heap=512 MiB (arena=1024 MiB free=3 MiB)
+[skia] GPU resource cache limit 256 MiB -> 512 MiB
+[skia] canvas surface MSAA=0x ready
+[skia] GPU screen surface 1280x720 ready
+[nxjs] runtime v1.0.0-beta.10 (libnx 4.12.0)
+[nxjs] wake detected (frame gap 9s) - resetting sockets
+[tcp] wake reset: 1 socket(s)
+[tcp] wake reset: polls stopped, fds dead-marked
+[tcp] wake reset: stale ops fired (ECONNRESET)
+[tcp] wake reset complete
+[nxjs] wake reset returned

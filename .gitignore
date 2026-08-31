@@ -1,0 +1,10 @@
+node_modules/
+romfs/main.js
+romfs/fx-term.wasm
+*.nro
+*.nsp
+.env
+debug/mtp/config.json
+artifacts/
+.zig-cache/
+bun.lock?

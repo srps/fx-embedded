@@ -1,0 +1,10 @@
+fx-embedded v0.1.0 — fx (wasm) on the Switch
+[boot] per-run log: sdmc:/switch/fx-embedded/logs/fx-embedded-1788039468741.log
+runtime: {"wasm":true,"jspi":true}
+[boot] config: env/key loaded
+[term] JSPI OK (V8 stack switching)
+[term] reading fx-term.wasm…
+[term] + wasm 4.8 MB
+[term] compiling…
+[term] + compiled in 1340 ms — starting agent…
+[net] POST https://ai-gateway.vercel.sh/v3/ai/language-model
