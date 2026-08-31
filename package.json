@@ -5,6 +5,7 @@
   "description": "Nintendo Switch app embedding the fx agent: fx-term.wasm runs on-device via V8+JSPI, no PC needed",
   "scripts": {
     "wasm": "bash scripts/wasm.sh",
+    "fx:update": "bash scripts/fx-update.sh",
     "build": "bun run wasm && bash scripts/bundle.sh",
     "nro": "nxjs-nro",
     "nro:fat": "bun run nro && bash scripts/nro-fat.sh",
