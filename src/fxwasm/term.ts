@@ -190,7 +190,15 @@ export class TermSession {
     const vk: any = (globalThis as any).navigator?.virtualKeyboard ?? null;
 
     // USB / system keyboards: keydown -> terminal bytes.
+    let keyLogs = 0;
     const onKeyDown = (e: any) => {
+      // USB-keyboard diagnosis (device run 2026-09-01: typing did nothing
+      // unless the swkbd was up): breadcrumb the first few raw events so a
+      // silent HID path is distinguishable from an encode/consume problem.
+      if (keyLogs < 8) {
+        keyLogs++;
+        try { flog(`[key] keydown code=${e?.keyCode} key=${JSON.stringify(e?.key ?? "")} mod=${e?.modifiers ?? e?.ctrlKey}`); } catch { /* */ }
+      }
       const data = encodeKeyEvent(e);
       if (data !== null) {
         e.preventDefault?.();
@@ -198,6 +206,7 @@ export class TermSession {
       }
     };
     addEventListener("keydown", onKeyDown);
+    try { flog(`[key] keydown listener registered (globalThis===window: ${(globalThis as any) === (globalThis as any).window})`); } catch { /* */ }
     this.cleanupFns.push(() => removeEventListener("keydown", onKeyDown));
 
     // X opens the system keyboard; its submit becomes a line + \r.
