@@ -211,6 +211,11 @@ export class TermSession {
 
     // X opens the system keyboard; its submit becomes a line + \r.
     let vkUp = false;
+    // swkbd draft text currently mirrored into fx's own input line. Each
+    // change event kills the line (Ctrl+U, fx: delete_to_line_start) and
+    // retypes the draft, so fx's real footer renders it live — including
+    // "/" command completions. Submit then only has to commit with \r.
+    let mirrored = "";
     // The inline swkbd is a touch overlay: its own Send/Cancel taps are ALSO
     // delivered to our screen as touch events. A tap must never reopen the
     // keyboard while it is up or right after it closed (device run 2026-08-30:
@@ -236,6 +241,7 @@ export class TermSession {
         // alone does not (B).
         try { vk.cursorIndex = 0; } catch { /* older runtime */ }
         screen.setKeyboardDraft("");
+        mirrored = "";
         vk.show();
         vkUp = true;
         firstChangeLogged = false;
@@ -273,14 +279,20 @@ export class TermSession {
         screen.setKeyboardDraft(null);
         try { flog(`[kb] submit ${value.length} chars`); } catch { /* */ }
         closeOut("submit");
-        if (value) session.write(`${value}\r`);
+        session.write(value ? `\x15${value}\r` : "\x15");
+        mirrored = "";
       };
       const onChange = () => {
         if (!firstChangeLogged) {
           firstChangeLogged = true;
           try { flog("[kb] first change event received"); } catch { /* */ }
         }
-        screen.setKeyboardDraft(String(vk.value ?? ""));
+        const draft = String(vk.value ?? "");
+        screen.setKeyboardDraft(draft);
+        if (draft !== mirrored) {
+          session.write(`\x15${draft}`);
+          mirrored = draft;
+        }
       };
       const onCancel = () => {
         vkUp = false;
@@ -289,6 +301,7 @@ export class TermSession {
         screen.setKeyboardDraft(null);
         try { flog("[kb] cancel"); } catch { /* */ }
         closeOut("cancel");
+        if (mirrored) { session.write("\x15"); mirrored = ""; }
       };
       const onGeom = () => {
         const h = vk.boundingRect?.height ?? 0;
@@ -365,7 +378,8 @@ export class TermSession {
         try { vk.hide(); } catch { /* already gone */ }
         screen.setInset(0);
         screen.setKeyboardDraft(null);
-        if (value) session.write(`${value}\r`);
+        session.write(value ? `\x15${value}\r` : "\x15");
+        mirrored = "";
         return;
       }
       requestExit();
