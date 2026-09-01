@@ -11,8 +11,7 @@ ARGS=(src/main.ts --bundle --format=esm --outfile=romfs/main.js)
 if node_modules/.bin/esbuild --version >/dev/null 2>&1; then
   exec node_modules/.bin/esbuild "${ARGS[@]}"
 fi
-for cand in ../fx-switch/node_modules/@esbuild/linux-x64/bin/esbuild \
-            ../nx.js/node_modules/.pnpm/@esbuild+linux-x64@*/node_modules/@esbuild/linux-x64/bin/esbuild; do
+for cand in ../nx.js/node_modules/.pnpm/@esbuild+linux-x64@*/node_modules/@esbuild/linux-x64/bin/esbuild; do
   if [ -x "$cand" ]; then
     echo "bundle: local esbuild is for another platform; using $cand" >&2
     exec "$cand" "${ARGS[@]}"

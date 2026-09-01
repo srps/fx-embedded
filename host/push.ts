@@ -1,5 +1,5 @@
 /**
- * Push (and auto-launch) the fx-switch NRO to hbmenu's netloader — a pure-Bun
+ * Push (and auto-launch) the fx-embedded NRO to hbmenu's netloader — a pure-Bun
  * reimplementation of devkitPro's `nxlink`, so no devkitPro install needed.
  *
  * Protocol implemented against nx-hbmenu's common/netloader.c (loadnro +
@@ -23,7 +23,7 @@
  * back to SWITCH_IP env. Note: UDP broadcast does not cross WSL2 NAT mode —
  * pass --ip there (mirrored networking is fine).
  *
- * Usage: bun host/push.ts [nro] [--ip a.b.c.d] [--name fx-switch/fx-switch.nro]
+ * Usage: bun host/push.ts [nro] [--ip a.b.c.d] [--name fx-embedded/fx-embedded.nro]
  */
 
 import { createSocket } from "node:dgram";
@@ -41,8 +41,8 @@ function arg(name: string): string | undefined {
 const positional = process.argv
   .slice(2)
   .filter((a) => !a.startsWith("--") || a === "--");
-const nroPath = positional[0] ?? arg("nro") ?? "fx-switch.nro";
-const remoteName = arg("name") ?? "fx-switch/fx-switch.nro";
+const nroPath = positional[0] ?? arg("nro") ?? "fx-embedded.nro";
+const remoteName = arg("name") ?? "fx-embedded/fx-embedded.nro";
 const port = Number(arg("port") ?? NETLOADER_PORT);
 
 async function discoverSwitch(timeoutMs = 2000): Promise<string | undefined> {
@@ -110,7 +110,7 @@ async function main(): Promise<void> {
   if (!ip) {
     console.error(
       "push: no Switch found. Press Y in hbmenu to arm the netloader, then:\n" +
-        "  bun host/push.ts fx-switch.nro --ip <switch-ip>",
+        "  bun host/push.ts fx-embedded.nro --ip <switch-ip>",
     );
     process.exit(1);
   }
