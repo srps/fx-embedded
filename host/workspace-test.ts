@@ -35,7 +35,7 @@ const timeout = <T>(promise: Promise<T>, ms: number, message: string) =>
   });
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-const root = mkdtempSync(join(tmpdir(), "fx-switch-workspace-"));
+const root = mkdtempSync(join(tmpdir(), "fx-embedded-workspace-"));
 const toHost = (path: string) => join(root, path.replace(/^sdmc:\/?/, "").replaceAll("/", "\\"));
 let commits = 0;
 
