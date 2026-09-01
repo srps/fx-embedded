@@ -21,6 +21,7 @@
     "term:model": "bun host/model-cmd-test.ts",
     "term:exit": "bun host/exit-test.ts",
     "term:login": "bun host/login-test.ts",
+    "term:sdk-login": "bun host/sdk-login-proof.ts",
     "check": "tsc --noEmit"
   },
   "devDependencies": {
