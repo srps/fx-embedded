@@ -61,6 +61,13 @@ export class TermScreen {
   private frames = 0;
   /** Terminal line height in px (same rounding as the runtime Terminal). */
   private rowPx = Math.ceil(FONT_SIZE * 1.25);
+  /**
+   * Underlying xterm instance (fork runtime's Console#terminal). fx anchors
+   * its transcript at the TOP, so the input line's row varies with session
+   * depth — the keyboard viewport must follow the cursor, not assume the
+   * prompt sits at the canvas bottom. null on runtimes without the getter.
+   */
+  private xterm: any = null;
 
   constructor() {
     const screen = (globalThis as any).screen;
@@ -97,6 +104,10 @@ export class TermScreen {
       const c = this.console.canvas;
       flog(`[scr] canvas ${c?.width}x${c?.height} screen ${this.w}x${this.h} rows=${this.rows} lh=${lh} rowPx=${this.rowPx}`);
     } catch { /* */ }
+    try {
+      this.xterm = (this.console as any).terminal?.terminal ?? null;
+      flog(`[scr] cursor tracking ${this.xterm ? "on (Console#terminal)" : "OFF — stock runtime, blind inset"}`);
+    } catch { this.xterm = null; }
   }
 
   /** Raw TUI bytes from the wasm module. */
@@ -240,8 +251,20 @@ export class TermScreen {
     const ctx = this.ctx;
     ctx.fillStyle = "#0b0f14";
     ctx.fillRect(0, 0, this.w, this.h);
+    // Keyboard viewport: put the input line (cursor row) at the top of the
+    // strip left visible above the applet, so the prompt AND the slash-menu
+    // fx draws below it stay on screen. Deep sessions clamp to the plain
+    // inset (cursor near the canvas bottom already). Assumes an unscrolled
+    // viewport — the Terminal draws its cursor at cursorY*lh the same way.
+    let offset = this.inset;
+    if (this.inset > 0 && this.xterm) {
+      try {
+        const cur = this.xterm.buffer.active.cursorY * this.rowPx;
+        offset = Math.max(0, Math.min(cur, this.inset));
+      } catch { /* blind inset */ }
+    }
     // Reading .canvas renders pending output first (runtime contract).
-    ctx.drawImage(this.console.canvas, 0, -this.inset);
+    ctx.drawImage(this.console.canvas, 0, -offset);
 
     if (this.banner.length > 0) this.drawBanner(ctx);
     this.drawBar(ctx);
