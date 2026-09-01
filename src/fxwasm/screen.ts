@@ -187,6 +187,30 @@ export class TermScreen {
     this.dirty = true;
   }
 
+  /**
+   * fx's current input-line text, read off the xterm buffer (cursor row,
+   * rendered as "┃ text"). This is the only way the host learns text it did
+   * not put there itself — USB-typed characters or a history recall — so the
+   * keyboard can be seeded with it. Single-row inputs only; returns null when
+   * cursor tracking is off or the cursor row is not the prompt.
+   */
+  readInputLine(): string | null {
+    if (!this.xterm) return null;
+    try {
+      const buf = this.xterm.buffer.active;
+      if (buf.cursorX < 2) return null;
+      const line = buf.getLine(buf.baseY + buf.cursorY);
+      if (!line) return null;
+      if (!line.translateToString(true).startsWith("┃")) return null;
+      // Exactly the cells between the marker ("┃ ") and the cursor — the
+      // same span Ctrl-U kills — so painted cells right of the cursor (the
+      // slash-menu row padding) never leak into the seed.
+      return line.translateToString(false, 2, buf.cursorX);
+    } catch {
+      return null;
+    }
+  }
+
   scroll(rows: number): void {
     if (rows < 0) this.console.scrollUp?.(-rows);
     else this.console.scrollDown?.(rows);
@@ -301,10 +325,16 @@ export class TermScreen {
     ctx.fillRect(0, by, this.w, 2);
     ctx.textBaseline = "top";
     ctx.font = '17px "Geist Mono", monospace';
-    if (this.keyboardDraft !== null) {
+    if (this.keyboardDraft !== null && !this.xterm) {
+      // Stock runtime (no cursor tracking): the real prompt may be shifted
+      // off-screen, so the bar's draft echo is the only visible feedback.
       ctx.fillStyle = "#e2e8f0";
       const draft = this.keyboardDraft || "type a prompt…";
       ctx.fillText(`> ${draft.slice(-108)}`, 14, by + 3);
+    } else if (this.keyboardDraft !== null) {
+      // Cursor-aware viewport keeps fx's own input line visible — no echo.
+      ctx.fillStyle = "#4ade80";
+      ctx.fillText(this.status, 14, by + 3);
     } else if (this.streaming) {
       const dots = ".".repeat(1 + (this.streamPhase % 3));
       ctx.fillStyle = "#67e8f9";

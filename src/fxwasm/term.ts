@@ -247,6 +247,13 @@ export class TermSession {
         // libnx SwkbdInlineCalcArg has a 0x3f4-byte UTF-16 input buffer
         // (506 code units including the terminator). Stay below that boundary.
         vk.maxLength = 500;
+        // Seed from fx's real input line: text the host never saw (USB
+        // keystrokes, an up-arrow history recall) is invisible to `mirrored`,
+        // and a keyboard opened on an empty buffer cannot delete it. The
+        // screen read is ground truth; when it returns null (stock runtime,
+        // cursor off the prompt row) the last mirror is the best available.
+        const onScreen = screen.readInputLine();
+        if (onScreen !== null) mirrored = onScreen;
         vk.value = mirrored;
         // K1 v4 on the stock runtime (2026-08-30): after a submit the applet
         // clears its text but keeps the old cursor position, so every later
