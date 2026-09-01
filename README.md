@@ -153,6 +153,11 @@ Work found and fixed along the way, in various stages of upstreaming:
   app exit — see
   [swkbd-leak-repro](https://github.com/srps/swkbd-leak-repro).
 
+## Credits
+
+Built with AI assistance: Claude Fable 5, GPT 5.6-Sol, GLM 5.3, and
+GLM 5.3 Flash.
+
 ## License
 
 MIT
