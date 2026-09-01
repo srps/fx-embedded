@@ -18,6 +18,9 @@
  *     terminal (OSC 11 background + DA1 fence, DECRQM 996 color scheme) and
  *     expects replies on stdin; a real terminal answers, so we do too
  *     (matching the exact sequences of src/ui/terminal/terminal.zig)
+ *
+ * fx is Copyright 2025 Vercel, Inc., licensed under Apache-2.0; this port
+ * is a modified derivative — see THIRD-PARTY-NOTICES.md.
  */
 
 const encoder = new TextEncoder();

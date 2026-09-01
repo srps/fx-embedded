@@ -159,9 +159,28 @@ Work found and fixed along the way, in various stages of upstreaming:
 
 ## Credits
 
+fx-embedded stands on three projects:
+
+- **[fx](https://github.com/vercel-labs/fx)** (Apache-2.0) — the agent
+  itself. The bundled `fx-term.wasm` is fx compiled to WASI, the on-device
+  host layer is a port of fx's `sdk/fx-sdk.js`, and the console-specific fx
+  changes ride in `patches/fx-switch-patches.diff`.
+- **[nx.js](https://github.com/TooTallNate/nx.js)** (MIT) — the JavaScript
+  runtime this app *is*; the fat NRO bundles it (a fork with fixes being
+  upstreamed, see above).
+- **[Atmosphère](https://github.com/Atmosphere-NX/Atmosphere)** (GPL-2.0) —
+  the custom firmware this targets and the foundation all Switch homebrew
+  stands on.
+
+License texts and bundling details:
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
 Built with AI assistance: Claude Fable 5, GPT 5.6-Sol, GLM 5.3, and
 GLM 5.3 Flash.
 
 ## License
 
-MIT
+MIT for this repository's own code — see [LICENSE](LICENSE). The bundled
+fx wasm, nx.js runtime, and xterm.js keep their own licenses; see
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), and keep that file
+alongside any NRO you redistribute.
