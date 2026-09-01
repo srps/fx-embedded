@@ -157,20 +157,21 @@ when `node_modules` was installed from Windows (win32 binary under WSL).
 
 Work found and fixed along the way, in various stages of upstreaming:
 
-- **fx**: WASI builds emitted constant debug-trace ids, which merged all
-  tool-call presentation groups into one block (fix on `switch-patches`,
-  PR-ready). Opt-in stream poll pacing for synchronous hosts. On the wasm
-  terminal, keystrokes bypassed the auth picker (typing after "Signed in"
-  dismissed the team picker, so the first model call had no team and got
-  HTTP 401); the interactive sign-in now also adopts the only team like
-  `fx login` does.
-- **nx.js**: global `addEventListener` never installed (USB/Bluetooth
-  keyboards were unreachable in every app); fetch abort throwing on locked
-  body streams; unhandled rejection in `Socket#close()` on errored streams;
-  the sleep/wake socket-session reset machinery; inline swkbd cursor bug
-  (text discarded after the first session) and the swkbd applet leak across
-  app exit — see
-  [swkbd-leak-repro](https://github.com/srps/swkbd-leak-repro).
+- **fx** (PR branches on the `srps/fx` fork): WASI builds emitted constant
+  debug-trace ids, which merged every tool-call block into one; on the wasm
+  terminal, keystrokes bypassed the auth picker and the interactive sign-in
+  never adopted the only Vercel team, so the first model call after
+  `/login` answered HTTP 401. The synchronous stream-transport pacing stays
+  a local patch: the official SDK suspends those imports, so upstream gets
+  at most a question about the host contract.
+- **nx.js** (fix branches on the `srps/nx.js` fork, issues first): global
+  `addEventListener` never installed (USB/Bluetooth keyboards were
+  unreachable in every app); fetch abort throwing on locked body streams;
+  unhandled rejection in `Socket#close()` on errored streams; inline swkbd
+  cursor bug (text discarded after the first session) and the applet leak
+  across app exit that can crash the system keyboard — see
+  [swkbd-leak-repro](https://github.com/srps/swkbd-leak-repro). The
+  sleep/wake socket-session reset is filed as an issue before any series.
 
 ## Credits
 
