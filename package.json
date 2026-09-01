@@ -12,7 +12,7 @@
     "deploy": "bun run build && bun run nro && bun run push",
     "push": "bun host/push.ts fx-embedded.nro --name fx-embedded/fx-embedded.nro",
     "push:fat": "bun host/push.ts fx-embedded-fat.nro --name fx-embedded/fx-embedded.nro",
-    "test:push": "bun host/mock-hbmenu.ts fx-embedded.nro 28280 & sleep 1 && bun host/push.ts fx-embedded.nro --ip 127.0.0.1 --name fx-embedded/fx-embedded.nro; kill %1 2>/dev/null",
+    "test:push": "bun host/push-test.ts fx-embedded.nro",
     "term:smoke": "bun host/term-smoke.ts",
     "term:stream": "bun host/stream-test.ts",
     "term:workspace": "bun host/workspace-test.ts",
@@ -22,6 +22,7 @@
     "check": "tsc --noEmit"
   },
   "devDependencies": {
+    "@xterm/headless": "6.0.0",
     "esbuild": "^0.25.0",
     "typescript": "^5.9.2",
     "@nx.js/nro": "1.0.0-beta.6",
