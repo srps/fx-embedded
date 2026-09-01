@@ -12,9 +12,9 @@
 
 import { readFileSync } from "node:fs";
 
-// Use the exact dependency the device runtime bundles.
-// @ts-ignore
-import { Terminal } from "/mnt/c/Users/sergi/GitHub/nx.js/packages/runtime/node_modules/@xterm/headless/lib-headless/xterm-headless.js";
+// Keep this version aligned with the dependency bundled by nx.js so the host
+// replay uses the same ANSI engine as the device runtime.
+import { Terminal } from "@xterm/headless";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);

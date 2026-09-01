@@ -60,15 +60,22 @@ const mockFetch = (async (url: any, _init: any) => {
   if (u.includes("/v3/ai/language-model")) {
     postCount += 1;
     console.log(`[mock] POST ${u} -> 200 (streaming ${chunks.length} chunks)`);
+    let cancelled = false;
     const body = new ReadableStream({
       start(controller) {
         let i = 0;
         const pump = () => {
+          // fx may close the response as soon as it has consumed [DONE]. A
+          // previously scheduled timer must not touch the cancelled controller.
+          if (cancelled) return;
           if (i >= chunks.length) { controller.close(); return; }
           controller.enqueue(encoder.encode(chunks[i++]!));
           setTimeout(pump, 15); // drip the stream like a real model
         };
         pump();
+      },
+      cancel() {
+        cancelled = true;
       },
     });
     return { ok: true, status: 200, body };
