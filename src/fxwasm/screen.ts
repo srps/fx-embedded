@@ -90,6 +90,13 @@ export class TermScreen {
     const lh = Math.max(1, Math.ceil(FONT_SIZE * 1.25));
     this.cols = Math.max(1, Math.floor(this.w / cw));
     this.rows = Math.max(1, Math.floor((this.h - BAR_H) / lh));
+    // Device diagnosis (swkbd mirror): the inset math assumes the console
+    // canvas is (h - BAR_H) tall with the last row at its bottom edge. Log
+    // the real geometry once so a wrong assumption is visible in the log.
+    try {
+      const c = this.console.canvas;
+      flog(`[scr] canvas ${c?.width}x${c?.height} screen ${this.w}x${this.h} rows=${this.rows} lh=${lh} rowPx=${this.rowPx}`);
+    } catch { /* */ }
   }
 
   /** Raw TUI bytes from the wasm module. */

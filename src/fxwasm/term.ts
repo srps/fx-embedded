@@ -55,6 +55,9 @@ export class TermSession {
   private screen: TermScreen | null = null;
   private session: FxTermSession | null = null;
   private cleanupFns: (() => void)[] = [];
+  /** Set by each swkbd mirror write; cleared by the first stdout chunk. */
+  private kbEchoProbe = false;
+  private kbEchoLogs = 0;
 
   constructor(private config: TermConfig = {}) {}
 
@@ -106,7 +109,16 @@ export class TermSession {
         wasm: wasm as any,
         terminal: { cols: screen.cols, rows: screen.rows },
         env: this.config.env ?? {},
-        stdout: (chunk) => screen.write(chunk),
+        stdout: (chunk) => {
+          screen.write(chunk);
+          if (this.kbEchoProbe) {
+            this.kbEchoProbe = false;
+            if (this.kbEchoLogs < 6) {
+              this.kbEchoLogs++;
+              try { flog(`[kb] fx echoed ${chunk.byteLength ?? chunk.length}B after mirror`); } catch { /* */ }
+            }
+          }
+        },
         stderr: (chunk) => {
           try { flog(`[term:err] ${new TextDecoder().decode(chunk)}`); } catch { /* */ }
         },
@@ -216,6 +228,9 @@ export class TermSession {
     // retypes the draft, so fx's real footer renders it live — including
     // "/" command completions. Submit then only has to commit with \r.
     let mirrored = "";
+    // Debug breadcrumbs for the mirror path: log the first mirror write and
+    // whether fx echoes stdout while the applet is up (device diagnosis).
+    let mirrorLogs = 0;
     // The inline swkbd is a touch overlay: its own Send/Cancel taps are ALSO
     // delivered to our screen as touch events. A tap must never reopen the
     // keyboard while it is up or right after it closed (device run 2026-08-30:
@@ -232,16 +247,15 @@ export class TermSession {
         // libnx SwkbdInlineCalcArg has a 0x3f4-byte UTF-16 input buffer
         // (506 code units including the terminator). Stay below that boundary.
         vk.maxLength = 500;
-        vk.value = "";
+        vk.value = mirrored;
         // K1 v4 on the stock runtime (2026-08-30): after a submit the applet
         // clears its text but keeps the old cursor position, so every later
         // keystroke lands past the end of an empty buffer and is dropped
         // (ChangedString ""). Resetting the cursor before Appear restores
         // input deterministically (strategies C/D); a hide() round-trip
         // alone does not (B).
-        try { vk.cursorIndex = 0; } catch { /* older runtime */ }
-        screen.setKeyboardDraft("");
-        mirrored = "";
+        try { vk.cursorIndex = mirrored.length; } catch { /* older runtime */ }
+        screen.setKeyboardDraft(mirrored);
         vk.show();
         vkUp = true;
         firstChangeLogged = false;
@@ -292,6 +306,11 @@ export class TermSession {
         if (draft !== mirrored) {
           session.write(`\x15${draft}`);
           mirrored = draft;
+          this.kbEchoProbe = true;
+          if (mirrorLogs < 6) {
+            mirrorLogs++;
+            try { flog(`[kb] mirror ${draft.length}ch -> fx stdin`); } catch { /* */ }
+          }
         }
       };
       const onCancel = () => {
@@ -299,9 +318,8 @@ export class TermSession {
         noteHidden();
         screen.setInset(0);
         screen.setKeyboardDraft(null);
-        try { flog("[kb] cancel"); } catch { /* */ }
+        try { flog(`[kb] cancel (draft ${mirrored.length}ch kept in fx line)`); } catch { /* */ }
         closeOut("cancel");
-        if (mirrored) { session.write("\x15"); mirrored = ""; }
       };
       const onGeom = () => {
         const h = vk.boundingRect?.height ?? 0;
@@ -401,6 +419,11 @@ export class TermSession {
           for (const i of edges) {
             const action = mapGamepad(i);
             if (!action) continue;
+            // While the inline applet is up it owns the controller: the same
+            // press is ALSO delivered here (like the Send-tap touches), so A
+            // while typing would inject \r into fx's now-mirrored line and
+            // send a partial prompt. Only Minus (exit) stays live.
+            if (vkUp && action.kind !== "exit") continue;
             if (action.kind === "bytes") session.write(action.data);
             else if (action.kind === "scroll") screen.scroll(action.rows);
             else if (action.kind === "keyboard") openKeyboard();
