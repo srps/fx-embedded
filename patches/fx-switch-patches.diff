@@ -1,0 +1,106 @@
+diff --git a/src/core/shared/debug_trace.zig b/src/core/shared/debug_trace.zig
+index fed62041..aba70731 100644
+--- a/src/core/shared/debug_trace.zig
++++ b/src/core/shared/debug_trace.zig
+@@ -30,6 +30,8 @@ var state_mutex: std.Io.Mutex = .init;
+ var state: State = .{};
+ var next_turn_id = std.atomic.Value(u64).init(1);
+ var next_step_id = std.atomic.Value(u64).init(1);
++var next_turn_id_wasi: u64 = 1;
++var next_step_id_wasi: u64 = 1;
+ 
+ pub fn configureFromEnv(alloc: Allocator, workspace_root: []const u8) void {
+     const options = loadOptionsFromEnv(alloc, workspace_root) catch return;
+@@ -58,12 +60,24 @@ pub fn activeLogPath() ?[]const u8 {
+ }
+ 
+ pub fn nextTurnId() u64 {
+-    if (comptime @import("builtin").os.tag == .wasi) return 1;
++    // Single-threaded WASI: plain counters, no atomics. These ids are not
++    // just trace metadata — they form the tool presentation group identity
++    // ({turn_id, anchor_step_id}); a constant value collapses every tool
++    // status in the session into one transcript block.
++    if (comptime @import("builtin").os.tag == .wasi) {
++        const id = next_turn_id_wasi;
++        next_turn_id_wasi += 1;
++        return id;
++    }
+     return next_turn_id.fetchAdd(1, .seq_cst);
+ }
+ 
+ pub fn nextStepId() u64 {
+-    if (comptime @import("builtin").os.tag == .wasi) return 1;
++    if (comptime @import("builtin").os.tag == .wasi) {
++        const id = next_step_id_wasi;
++        next_step_id_wasi += 1;
++        return id;
++    }
+     return next_step_id.fetchAdd(1, .seq_cst);
+ }
+ 
+diff --git a/src/gateway/host_stream_provider.zig b/src/gateway/host_stream_provider.zig
+index 54269947..e9f91592 100644
+--- a/src/gateway/host_stream_provider.zig
++++ b/src/gateway/host_stream_provider.zig
+@@ -14,6 +14,7 @@ pub const Transport = struct {
+     status_fn: *const fn (?*anyopaque, i32, *u16) i32,
+     next_fn: *const fn (?*anyopaque, i32, []u8) i32,
+     close_fn: *const fn (?*anyopaque, i32) void,
++    poll_pace_ns: u64 = 0,
+ 
+     fn open(self: Transport, method: []const u8, url: []const u8, headers: []const u8, body: []const u8) !i32 {
+         return self.open_fn(self.context, method, url, headers, body);
+@@ -30,6 +31,10 @@ pub const Transport = struct {
+     fn close(self: Transport, handle: i32) void {
+         self.close_fn(self.context, handle);
+     }
++
++    fn pace(self: Transport) void {
++        if (self.poll_pace_ns > 0) io_mod.sleep(self.poll_pace_ns);
++    }
+ };
+ 
+ pub const ProviderContext = struct {
+@@ -110,6 +115,7 @@ fn stream(raw: ?*anyopaque, alloc: Allocator, request: stream_provider.ModelRequ
+         if (status_result == 1) break;
+         if (status_result == -2) return error.Cancelled;
+         if (status_result < 0) return error.HostStreamFailed;
++        transport.pace();
+         try pulse(request.cooperative_pulse);
+     }
+ 
+@@ -220,6 +226,7 @@ fn readBody(alloc: Allocator, transport: Transport, handle: i32, cancel_flag: *s
+         if (cancel_flag.load(.seq_cst)) return error.Cancelled;
+         const count = transport.next(handle, &chunk);
+         if (count == -3) {
++            transport.pace();
+             try pulse(cooperative_pulse);
+             continue;
+         }
+@@ -296,6 +303,7 @@ const HostStreamReader = struct {
+             if (self.cancel_flag.load(.seq_cst)) return self.abortRead();
+             const count = self.transport.next(self.handle, dest);
+             if (count == -3) {
++                self.transport.pace();
+                 if (self.cooperative_pulse != null) {
+                     self.pulseAt(std.Io.Clock.Timestamp.now(io_mod.getIo(), .awake)) catch return error.ReadFailed;
+                 }
+diff --git a/src/gateway/js_host_stream_provider.zig b/src/gateway/js_host_stream_provider.zig
+index e4d6817c..94edbc85 100644
+--- a/src/gateway/js_host_stream_provider.zig
++++ b/src/gateway/js_host_stream_provider.zig
+@@ -1,3 +1,4 @@
++const std = @import("std");
+ const stream_provider = @import("../core/agent/stream_provider.zig");
+ const host_stream_provider = @import("host_stream_provider.zig");
+ const builtin_gateway = @import("../builtins/gateway.zig");
+@@ -22,6 +23,9 @@ const provider_context = host_stream_provider.initContext(builtin_gateway.buildA
+     .status_fn = status,
+     .next_fn = next,
+     .close_fn = close,
++    // The JavaScript imports report pending synchronously. Yield through WASI
++    // between polls so the host event loop can advance fetch callbacks.
++    .poll_pace_ns = 10 * std.time.ns_per_ms,
+ });
+ 
+ pub fn provider() stream_provider.Provider {
