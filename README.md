@@ -36,11 +36,14 @@ AI Gateway <--HTTPS/WiFi-- fx-term.wasm (V8+JSPI, on Switch) <--ANSI--> fx TUI o
 - An AI Gateway API key.
 - The patched [nx.js](https://github.com/TooTallNate/nx.js) V8 runtime this
   app is developed against (keyboard, sleep/wake, and fetch fixes are being
-  upstreamed; until they land, build the runtime from the fork).
+  upstreamed; until they land, build the runtime from the fork's
+  [`upstream-series` branch](https://github.com/srps/nx.js/tree/upstream-series)).
+  The prebuilt fat NRO in [Releases](../../releases) already bundles it.
 
 ## Setup
 
-1. Copy `fx-embedded-fat.nro` (self-contained: runtime + app + wasm) to
+1. Copy `fx-embedded-fat.nro` (from [Releases](../../releases);
+   self-contained: runtime + app + wasm) to
    `sdmc:/switch/fx-embedded/fx-embedded.nro`, or use
    `bun run deploy` with hbmenu's netloader (**Y**). The slim NRO variant
    chainloads a shared `sdmc:/nx.js/` runtime instead.
@@ -87,7 +90,8 @@ otherwise clean exit. USB/Bluetooth keyboards type directly; Ctrl+C works.
 resuming a JSPI-suspended wasm import from inside the fetch callback chain
 aborts the process (symbolicated to the wasm import-wrapper/resume
 machinery; not yet reduced to a host-independent V8 report). So the fx
-side carries a small patch (the fx checkout's `switch-patches` branch):
+side carries a small patch (`patches/fx-switch-patches.diff`, applied to
+the fx checkout before `bun run wasm`):
 the stream poller sleeps 10 ms via WASI `poll_oneoff` — the proven-safe,
 timer-resumed suspend — before each not-ready poll, and the host's
 `fx_http_stream_status/next` imports never suspend. Input-path suspends
