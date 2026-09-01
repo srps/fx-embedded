@@ -7,10 +7,11 @@
  * Boot order: banner → config.json (optional; env/key) → fx TUI → Minus
  * exits back to hbmenu.
  *
- *   sdmc:/switch/fx-embedded/config.json
+ *   sdmc:/switch/fx-embedded/config.json (optional)
  *     { "env": { "AI_GATEWAY_API_KEY": "...", "FX_MODEL": "..." } }
- *     — or { "apiKey": "..." }. An API key is currently required because
- *       OAuth still crosses the device's unstable fetch/JSPI edge.
+ *     — or { "apiKey": "..." }. Without a key, sign in with /login inside
+ *       fx (Vercel device code); the login session is kept on the SD card.
+ *       When both exist fx uses the API key first (its source precedence).
  *
  * Runtime requirements (nxjs.ini in romfs handles them): the V8-based
  * runtime with WebAssembly + JSPI, launched with hbmenu title takeover
@@ -67,10 +68,9 @@ async function main(): Promise<void> {
   if (cfg?.env || cfg?.apiKey) {
     log("\x1b[2m[boot] config: env/key loaded\x1b[0m");
   } else {
-    log("\x1b[33m[boot] API key missing — add config.json before starting fx\x1b[0m");
-    log("\x1b[2mOAuth is disabled while the fetch/JSPI edge is under test.\x1b[0m");
-    await new Promise((r) => setTimeout(r, 6000));
-    return;
+    // No key is fine: fx's own /login (Sign in with Vercel, device code)
+    // works on device and the session persists under term/oauth-session.json.
+    log("\x1b[2m[boot] no config.json key — use /login inside fx, or add config.json\x1b[0m");
   }
 
   if (!localTermAvailable()) {

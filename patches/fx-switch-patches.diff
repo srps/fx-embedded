@@ -1,17 +1,135 @@
+diff --git a/src/core/app/app_auth_runtime.zig b/src/core/app/app_auth_runtime.zig
+index 3cfa808f..ad0d1c89 100644
+--- a/src/core/app/app_auth_runtime.zig
++++ b/src/core/app/app_auth_runtime.zig
+@@ -332,6 +332,7 @@ pub fn Runtime(comptime App: type) type {
+                     return true;
+                 }
+             }
++            if (comptime !runtime_profile.allows(App, .native_auth)) return false;
+             if (!app.auth.apiKeyEntryActive()) return false;
+             switch (byte) {
+                 3, 4 => _ = app.auth.popPickerStage(app.alloc),
+@@ -388,17 +389,17 @@ pub fn Runtime(comptime App: type) type {
+                                 return;
+                             }
+                             rememberCredentialSource(app, .fx_login);
+-
+-                            if (selection.teams.items.len > 0) {
+-                                app.auth.openTeamPicker(app.alloc, selection);
+-                            } else {
+-                                app.auth.closePicker(app.alloc);
+-                            }
+                             try writeAuthNotice(app, .{
+                                 .topic = "auth",
+                                 .tone = .neutral,
+                                 .body = "Signed in to Vercel.",
+                             });
++
++                            switch (selection.teams.items.len) {
++                                0 => app.auth.closePicker(app.alloc),
++                                1 => try adoptOnlyTeam(app, selection),
++                                else => app.auth.openTeamPicker(app.alloc, selection),
++                            }
+                         },
+                         .chatgpt => {
+                             try finishSubscriptionSignIn(app, .codex);
+@@ -413,6 +414,37 @@ pub fn Runtime(comptime App: type) type {
+             }
+         }
+ 
++        /// `fx login` picks the only team without asking; the interactive
++        /// sign-in does the same so the first model call carries a team.
++        fn adoptOnlyTeam(app: *App, selection: anytype) !void {
++            const team = selection.teams.items[0];
++            var selected_team = selection.select(app.alloc, 0) catch |err| {
++                debug_trace.logf("auth", "only team adopt failed err={s}", .{@errorName(err)});
++                app.auth.closePicker(app.alloc);
++                try writeAuthNotice(app, .{
++                    .topic = "auth",
++                    .tone = .warning,
++                    .body = "Signed in, but the Vercel team could not be saved. Choose it from /setup.",
++                });
++                return;
++            };
++            defer selected_team.deinit(app.alloc);
++
++            applyCredentialChange(app, app.auth.adoptSelectedTeam(app.alloc, &selected_team));
++            app.auth.closePicker(app.alloc);
++            const body = try std.fmt.allocPrint(
++                app.alloc,
++                "Using Vercel team {s} ({s}).",
++                .{ team.name, team.slug },
++            );
++            defer app.alloc.free(body);
++            try writeAuthNotice(app, .{
++                .topic = "auth",
++                .tone = .neutral,
++                .body = body,
++            });
++        }
++
+         fn finishSubscriptionSignIn(
+             app: *App,
+             provider: model_provider.ProviderId,
+@@ -1602,7 +1634,7 @@ const TestAuth = struct {
+         return &self.team_selection;
+     }
+ 
+-    fn adoptSelectedTeam(self: *TestAuth, _: std.mem.Allocator, _: *TestSelectedTeam) bool {
++    fn adoptSelectedTeam(self: *TestAuth, _: std.mem.Allocator, _: anytype) bool {
+         self.selected_team_adopted = true;
+         return true;
+     }
+diff --git a/src/core/app/app_input_runtime.zig b/src/core/app/app_input_runtime.zig
+index 9e6f86c4..399bdf1b 100644
+--- a/src/core/app/app_input_runtime.zig
++++ b/src/core/app/app_input_runtime.zig
+@@ -211,6 +211,11 @@ fn validateExplicitModelSelection(selection: ExplicitModelSelection, capabilitie
+     return .{ .selection = selection };
+ }
+ 
++fn authPickerInputEnabled(comptime App: type) bool {
++    return runtime_profile.allows(App, .native_auth) or
++        runtime_profile.allows(App, .js_host_auth);
++}
++
+ pub fn Runtime(comptime App: type) type {
+     return struct {
+         const history_rt = input_history_runtime.HistoryRuntime(App);
+@@ -989,7 +994,7 @@ pub fn Runtime(comptime App: type) type {
+                 return;
+             }
+ 
+-            if (comptime runtime_profile.allows(App, .native_auth)) {
++            if (comptime authPickerInputEnabled(App)) {
+                 if (try app_auth_runtime.Runtime(App).routeAuthPickerByte(app, byte)) return;
+             }
+             if (try full_transcript_rt.routeByte(app, byte)) return;
+@@ -1067,7 +1072,7 @@ pub fn Runtime(comptime App: type) type {
+             if (try full_transcript_rt.routeAction(app, resolved)) return .done;
+ 
+             if (resolved == .paste_start) {
+-                if (comptime runtime_profile.allows(App, .native_auth) and
++                if (comptime authPickerInputEnabled(App) and
+                     @hasDecl(@TypeOf(app.auth), "signInCodeEntryActive"))
+                 {
+                     if (app.auth.signInCodeEntryActive()) {
 diff --git a/src/core/shared/debug_trace.zig b/src/core/shared/debug_trace.zig
-index fed62041..aba70731 100644
+index 86e6db51..ec796883 100644
 --- a/src/core/shared/debug_trace.zig
 +++ b/src/core/shared/debug_trace.zig
-@@ -30,6 +30,8 @@ var state_mutex: std.Io.Mutex = .init;
- var state: State = .{};
+@@ -32,6 +32,9 @@ var state: State = .{};
  var next_turn_id = std.atomic.Value(u64).init(1);
  var next_step_id = std.atomic.Value(u64).init(1);
+ var next_subagent_id = std.atomic.Value(u64).init(1);
 +var next_turn_id_wasi: u64 = 1;
 +var next_step_id_wasi: u64 = 1;
++var next_subagent_id_wasi: u64 = 1;
  
  pub fn configureFromEnv(alloc: Allocator, workspace_root: []const u8) void {
      const options = loadOptionsFromEnv(alloc, workspace_root) catch return;
-@@ -58,12 +60,24 @@ pub fn activeLogPath() ?[]const u8 {
+@@ -60,17 +63,33 @@ pub fn activeLogPath() ?[]const u8 {
  }
  
  pub fn nextTurnId() u64 {
@@ -38,8 +156,18 @@ index fed62041..aba70731 100644
      return next_step_id.fetchAdd(1, .seq_cst);
  }
  
+ pub fn nextSubagentId() u64 {
+-    if (comptime @import("builtin").os.tag == .wasi) return 1;
++    if (comptime @import("builtin").os.tag == .wasi) {
++        const id = next_subagent_id_wasi;
++        next_subagent_id_wasi += 1;
++        return id;
++    }
+     return next_subagent_id.fetchAdd(1, .seq_cst);
+ }
+ 
 diff --git a/src/gateway/host_stream_provider.zig b/src/gateway/host_stream_provider.zig
-index 54269947..e9f91592 100644
+index 9803d11d..ad73afb0 100644
 --- a/src/gateway/host_stream_provider.zig
 +++ b/src/gateway/host_stream_provider.zig
 @@ -14,6 +14,7 @@ pub const Transport = struct {

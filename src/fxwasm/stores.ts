@@ -11,6 +11,8 @@
  * "empty", never to a crashed terminal.
  */
 
+import { flog } from "../flog.js";
+
 const ROOT = "sdmc:/switch/fx-embedded/term";
 const CONFIG_FILE = `${ROOT}/config.json`;
 const HISTORY_FILE = `${ROOT}/history.json`;
@@ -230,7 +232,11 @@ export function createOAuthSessionStore() {
         throw error;
       }
       const revision = `r${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
-      writeJson(OAUTH_FILE, { revision, bytesBase64: bytesToBase64(bytes) });
+      const saved = writeJson(OAUTH_FILE, { revision, bytesBase64: bytesToBase64(bytes) });
+      // Shape only, never token material. A session without a team is the
+      // device-run 2026-09-01 failure: the Gateway answers 401 to a login
+      // token that names no team.
+      flog(`[auth] login session ${saved ? "saved" : "NOT saved"} (team ${sessionTeamState(bytes)})`);
       return { revision };
     },
     async remove(expected?: string): Promise<boolean | "missing"> {
@@ -238,9 +244,19 @@ export function createOAuthSessionStore() {
       if (!record) return "missing";
       if (expected !== undefined && record.revision !== expected) return false;
       try { SW.removeSync(OAUTH_FILE); } catch { /* best effort */ }
+      flog("[auth] login session removed");
       return true;
     },
   };
+}
+
+function sessionTeamState(bytes: Uint8Array): string {
+  try {
+    const session = JSON.parse(new TextDecoder().decode(bytes));
+    return typeof session?.team_id === "string" && session.team_id ? "set" : "none";
+  } catch {
+    return "unknown";
+  }
 }
 
 /** Everything at once, guarded — TermSession takes a single stores object. */

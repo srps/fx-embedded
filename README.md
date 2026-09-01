@@ -33,7 +33,8 @@ AI Gateway <--HTTPS/WiFi-- fx-term.wasm (V8+JSPI, on Switch) <--ANSI--> fx TUI o
   with hbmenu (tested: Atmosphère 1.11.2, firmware 21.1).
 - Launch via **title takeover** (hold R on a game): WebAssembly needs the
   application memory regime — applet mode is too tight for V8's JIT arena.
-- An AI Gateway API key.
+- An AI Gateway API key, or a Vercel account to sign in with from inside
+  fx (`/login`, device code).
 - The patched [nx.js](https://github.com/TooTallNate/nx.js) V8 runtime this
   app is developed against (keyboard, sleep/wake, and fetch fixes are being
   upstreamed; until they land, build the runtime from the fork's
@@ -47,7 +48,7 @@ AI Gateway <--HTTPS/WiFi-- fx-term.wasm (V8+JSPI, on Switch) <--ANSI--> fx TUI o
    `sdmc:/switch/fx-embedded/fx-embedded.nro`, or use
    `bun run deploy` with hbmenu's netloader (**Y**). The slim NRO variant
    chainloads a shared `sdmc:/nx.js/` runtime instead.
-2. Create `sdmc:/switch/fx-embedded/config.json`:
+2. Optionally create `sdmc:/switch/fx-embedded/config.json`:
 
    ```json
    { "env": { "AI_GATEWAY_API_KEY": "...", "FX_MODEL": "moonshotai/kimi-k3" } }
@@ -59,8 +60,15 @@ AI Gateway <--HTTPS/WiFi-- fx-term.wasm (V8+JSPI, on Switch) <--ANSI--> fx TUI o
    the newest session at boot.
 3. Hold R on a game → hbmenu → fx-embedded.
 
-An API key is currently required: without one the app prints an actionable
-boot message and exits — it does not enter OAuth (see design notes).
+Without a key, run `/login` inside fx: it shows a `vercel.com/device` URL
+and a code, polls for approval, then picks your Vercel team (the only one
+automatically, otherwise a picker — confirm with A). The AI Gateway
+rejects a login token that names no team with HTTP 401, so a team is not
+optional. The session (access + refresh token, team) is kept in
+`sdmc:/switch/fx-embedded/term/oauth-session.json`, with the same exposure
+as the key in `config.json`: the SD card is the only storage the Switch
+has. When both a key and a login exist, fx uses the key first (its normal
+source precedence); `/setup` switches sources.
 
 ## Controls
 
@@ -96,8 +104,10 @@ the stream poller sleeps 10 ms via WASI `poll_oneoff` — the proven-safe,
 timer-resumed suspend — before each not-ready poll, and the host's
 `fx_http_stream_status/next` imports never suspend. Input-path suspends
 (`fd_read`, `poll_oneoff`) are exercised thousands of times per session
-and are stable. OAuth's request/response import would ride the unsafe
-path, which is why sign-in is disabled and an API key is required.
+and are stable. OAuth's request/response import (`fx_http_request`,
+suspending) is the one import that still resumes from a fetch callback;
+device runs of the full sign-in (metadata, device code, token polling,
+teams, refresh) have not hit the abort, so `/login` is enabled.
 
 **Sleep/wake is handled by the runtime, not the app.** A console sleep
 kills the bsd socket session process-wide; using a stale session asserts
@@ -128,6 +138,7 @@ bun run term:workspace # deterministic two-turn terminal-tool proof
 bun run term:input  # whole-line stdin fidelity (swkbd submits one chunk)
 bun run term:model  # /model picker path (uses the Suspending fx_http_request import)
 bun run term:exit   # exit during an endless 429 retry must settle
+bun run term:login  # /login against a mock Vercel: team saved, first call carries it
 bun run term:smoke  # real Gateway smoke when .env supplies a key/model
 bun run test:push   # byte-verify the netloader pusher against a mock hbmenu
 ```
@@ -148,7 +159,11 @@ Work found and fixed along the way, in various stages of upstreaming:
 
 - **fx**: WASI builds emitted constant debug-trace ids, which merged all
   tool-call presentation groups into one block (fix on `switch-patches`,
-  PR-ready). Opt-in stream poll pacing for synchronous hosts.
+  PR-ready). Opt-in stream poll pacing for synchronous hosts. On the wasm
+  terminal, keystrokes bypassed the auth picker (typing after "Signed in"
+  dismissed the team picker, so the first model call had no team and got
+  HTTP 401); the interactive sign-in now also adopts the only team like
+  `fx login` does.
 - **nx.js**: global `addEventListener` never installed (USB/Bluetooth
   keyboards were unreachable in every app); fetch abort throwing on locked
   body streams; unhandled rejection in `Socket#close()` on errored streams;

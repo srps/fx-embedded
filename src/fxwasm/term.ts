@@ -134,6 +134,8 @@ export class TermSession {
           } else if (type === "http.result") {
             try {
               flog(`[net] <- ${detail?.status ?? "ERR"} ${String(detail?.url ?? "").slice(0, 96)}` +
+                (detail?.bytes !== undefined ? ` ${detail.bytes}B` : "") +
+                (detail?.note ? ` (${detail.note})` : "") +
                 (detail?.error ? ` !! ${String(detail.error).slice(0, 120)}` : ""));
             } catch { /* */ }
           }

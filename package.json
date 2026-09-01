@@ -20,6 +20,7 @@
     "term:input": "bun host/input-test.ts",
     "term:model": "bun host/model-cmd-test.ts",
     "term:exit": "bun host/exit-test.ts",
+    "term:login": "bun host/login-test.ts",
     "check": "tsc --noEmit"
   },
   "devDependencies": {
