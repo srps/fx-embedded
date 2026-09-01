@@ -1,6 +1,6 @@
 {
   "name": "fx-embedded",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Nintendo Switch app embedding the fx agent: fx-term.wasm runs on-device via V8+JSPI, no PC needed",
   "author": "Sérgio P. da Silva",
