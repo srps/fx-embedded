@@ -160,15 +160,20 @@ when `node_modules` was installed from Windows (win32 binary under WSL).
 
 Work found and fixed along the way, in various stages of upstreaming:
 
-- **fx** (PR branches on the `srps/fx` fork): WASI builds emitted constant
-  debug-trace ids, which merged every tool-call block into one; on the wasm
+- **fx** (filed 2026-09-02): WASI builds emitted constant debug-trace ids,
+  which merged every tool-call block into one
+  ([#590](https://github.com/vercel-labs/fx/pull/590)); js-host surfaces
+  reported a HOME-based user settings failure after every `/model` although
+  the host store had saved the choice
+  ([#586](https://github.com/vercel-labs/fx/pull/586)). On the wasm
   terminal, keystrokes bypassed the auth picker and the interactive sign-in
   never adopted the only Vercel team, so the first model call after
-  `/login` answered HTTP 401; js-host surfaces reported a HOME-based user
-  settings failure after every `/model` although the host store had saved
-  the choice. The synchronous stream-transport pacing stays
-  a local patch: the official SDK suspends those imports, so upstream gets
-  at most a question about the host contract.
+  `/login` answered HTTP 401; the picker-input fix is being re-ported onto
+  upstream's auth refactor before filing, and the single-team adoption
+  stays a local patch. The synchronous stream-transport pacing also stays
+  a local patch: the official SDK suspends those imports, so upstream got a
+  question about the host contract
+  ([#587](https://github.com/vercel-labs/fx/issues/587)).
 - **nx.js** (filed 2026-09-02): global `addEventListener` never installed
   (USB/Bluetooth keyboards were unreachable in every app,
   [#419](https://github.com/TooTallNate/nx.js/pull/419)); fetch abort
