@@ -17,7 +17,8 @@ AI Gateway <--HTTPS/WiFi-- fx-term.wasm (V8+JSPI, on Switch) <--ANSI--> fx TUI o
 - Tool calls: fx's standard `terminal` workspace tool, backed by a
   root-confined command interpreter over `sdmc:/switch/fx-embedded/workspace/`
   (`pwd ls find cat head wc rg echo printf mkdir touch cp mv rm stat`,
-  `&&`/`;`, output redirection; no traversal out of the root, no pipelines).
+  `&&`/`;`, redirection incl. `>>`, `2>`, `2>&1`, `&>`, `/dev/null`; no
+  traversal out of the root, no pipelines).
 - Input: the inline software keyboard (tap or X; **+** sends), USB and
   Bluetooth keyboards typing straight into the prompt, Ctrl+C (or Y) to
   cancel a stream mid-flight.
@@ -135,6 +136,8 @@ bun run deploy      # build + pack + netloader push
 bun run check       # TypeScript contract check
 bun run term:stream # deterministic mock streaming through the real wasm
 bun run term:workspace # deterministic two-turn terminal-tool proof
+bun run term:redirect  # interpreter redirection semantics (2>&1, /dev/null, &>)
+bun run term:model-persist # /model persists via the host store, no HOME-settings notice
 bun run term:input  # whole-line stdin fidelity (swkbd submits one chunk)
 bun run term:model  # /model picker path (uses the Suspending fx_http_request import)
 bun run term:exit   # exit during an endless 429 retry must settle
@@ -161,7 +164,9 @@ Work found and fixed along the way, in various stages of upstreaming:
   debug-trace ids, which merged every tool-call block into one; on the wasm
   terminal, keystrokes bypassed the auth picker and the interactive sign-in
   never adopted the only Vercel team, so the first model call after
-  `/login` answered HTTP 401. The synchronous stream-transport pacing stays
+  `/login` answered HTTP 401; js-host surfaces reported a HOME-based user
+  settings failure after every `/model` although the host store had saved
+  the choice. The synchronous stream-transport pacing stays
   a local patch: the official SDK suspends those imports, so upstream gets
   at most a question about the host contract.
 - **nx.js** (fix branches on the `srps/nx.js` fork, issues first): global

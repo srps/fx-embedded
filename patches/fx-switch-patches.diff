@@ -81,6 +81,79 @@ index 3cfa808f..ad0d1c89 100644
          self.selected_team_adopted = true;
          return true;
      }
+diff --git a/src/core/app/app_commands.zig b/src/core/app/app_commands.zig
+index 78c72583..99ed460c 100644
+--- a/src/core/app/app_commands.zig
++++ b/src/core/app/app_commands.zig
+@@ -166,6 +166,9 @@ fn persistUserPreferences(
+     patch: config_runtime.UserSettingsPatch,
+     runtime_changed: bool,
+ ) !void {
++    // js-host surfaces have no user settings file; the host config store
++    // owns preferences there, so a HOME-based write has nothing to report.
++    if (comptime runtime_profile.allows(@TypeOf(app.*), .js_host_config)) return;
+     var attempt = config_runtime.attemptUserPreferences(app.alloc, patch);
+     defer attempt.deinit(app.alloc);
+     switch (attempt) {
+@@ -3428,26 +3431,28 @@ fn handleNotificationsCommand(app: anytype, rest: []const u8) !void {
+         .notification_attention_required = sound_on,
+         .notification_max = max,
+     };
+-    var attempt = config_runtime.attemptUserPreferences(app.alloc, patch);
+-    defer attempt.deinit(app.alloc);
+-    switch (attempt) {
+-        .failure => |failure| try session_commands.reportUserSettingsFailure(
+-            app,
+-            "sound",
+-            failure.err,
+-            failure.cleanup,
+-            runtime_changed,
+-        ),
+-        // announce_commit=false drops the routine "saved" line (the state
+-        // notice below covers it, matching /fast) but keeps warnings.
+-        .outcome => |outcome| _ = try session_commands.reportUserSettingsCommit(
+-            app,
+-            "sound",
+-            patch,
+-            outcome,
+-            null,
+-            false,
+-        ),
++    if (comptime !runtime_profile.allows(@TypeOf(app.*), .js_host_config)) {
++        var attempt = config_runtime.attemptUserPreferences(app.alloc, patch);
++        defer attempt.deinit(app.alloc);
++        switch (attempt) {
++            .failure => |failure| try session_commands.reportUserSettingsFailure(
++                app,
++                "sound",
++                failure.err,
++                failure.cleanup,
++                runtime_changed,
++            ),
++            // announce_commit=false drops the routine "saved" line (the state
++            // notice below covers it, matching /fast) but keeps warnings.
++            .outcome => |outcome| _ = try session_commands.reportUserSettingsCommit(
++                app,
++                "sound",
++                patch,
++                outcome,
++                null,
++                false,
++            ),
++        }
+     }
+ 
+     try app.writeDomainNotice(.{
+@@ -3515,6 +3520,9 @@ fn persistUserPreferencesSilently(
+     patch: config_runtime.UserSettingsPatch,
+     runtime_changed: bool,
+ ) !void {
++    // js-host surfaces have no user settings file; the host config store
++    // owns preferences there, so a HOME-based write has nothing to report.
++    if (comptime runtime_profile.allows(@TypeOf(app.*), .js_host_config)) return;
+     var attempt = config_runtime.attemptUserPreferences(app.alloc, patch);
+     defer attempt.deinit(app.alloc);
+     switch (attempt) {
 diff --git a/src/core/app/app_input_runtime.zig b/src/core/app/app_input_runtime.zig
 index 9e6f86c4..399bdf1b 100644
 --- a/src/core/app/app_input_runtime.zig
@@ -115,6 +188,49 @@ index 9e6f86c4..399bdf1b 100644
                      @hasDecl(@TypeOf(app.auth), "signInCodeEntryActive"))
                  {
                      if (app.auth.signInCodeEntryActive()) {
+diff --git a/src/core/app/app_session_runtime.zig b/src/core/app/app_session_runtime.zig
+index 39a19e72..37762eb5 100644
+--- a/src/core/app/app_session_runtime.zig
++++ b/src/core/app/app_session_runtime.zig
+@@ -2782,20 +2782,24 @@ pub fn Runtime(comptime App: type) type {
+                 result.session_error = err;
+             };
+ 
+-            var settings_attempt = config_runtime.attemptUserPreferences(
+-                app.alloc,
+-                patch.userSettingsPatch(),
+-            );
+-            switch (settings_attempt) {
+-                .outcome => |outcome| {
+-                    result.settings_outcome = outcome;
+-                    settings_attempt = undefined;
+-                },
+-                .failure => |failure| {
+-                    result.settings_error = failure.err;
+-                    result.settings_failure_cleanup = failure.cleanup;
+-                    settings_attempt = undefined;
+-                },
++            // js-host surfaces have no user settings file; the host config
++            // store owns preferences there (app_host_config_runtime).
++            if (comptime !runtime_profile.allows(App, .js_host_config)) {
++                var settings_attempt = config_runtime.attemptUserPreferences(
++                    app.alloc,
++                    patch.userSettingsPatch(),
++                );
++                switch (settings_attempt) {
++                    .outcome => |outcome| {
++                        result.settings_outcome = outcome;
++                        settings_attempt = undefined;
++                    },
++                    .failure => |failure| {
++                        result.settings_error = failure.err;
++                        result.settings_failure_cleanup = failure.cleanup;
++                        settings_attempt = undefined;
++                    },
++                }
+             }
+             if (result.settings_error == null) {
+                 applyPreferencePatch(
 diff --git a/src/core/shared/debug_trace.zig b/src/core/shared/debug_trace.zig
 index 86e6db51..ec796883 100644
 --- a/src/core/shared/debug_trace.zig

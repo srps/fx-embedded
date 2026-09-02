@@ -69,12 +69,32 @@ function tokenize(source: string): string[] {
       i += 1;
       continue;
     }
-    if (ch === ">") {
+    if (ch === "&" && source[i + 1] === ">") {
+      // &>file: both streams to the file.
       push();
+      tokens.push(source[i + 2] === ">" ? "&>>" : "&>");
+      i += source[i + 2] === ">" ? 2 : 1;
+      continue;
+    }
+    if (ch === ">") {
+      // Redirections carry their descriptor: `>` and `2>` become "1>" /
+      // "2>", and `2>&1` / `>&2` become one token so "&1" is never a path.
+      let fd = "1";
+      if ((token === "1" || token === "2") && (i - token.length === 0 || /\s/.test(source[i - token.length - 1]!))) {
+        fd = token;
+        token = "";
+      }
+      push();
+      let op = `${fd}>`;
       if (source[i + 1] === ">") {
-        tokens.push(">>");
+        op += ">";
         i += 1;
-      } else tokens.push(">");
+      }
+      if (source[i + 1] === "&" && (source[i + 2] === "1" || source[i + 2] === "2")) {
+        op += `&${source[i + 2]}`;
+        i += 2;
+      }
+      tokens.push(op);
       continue;
     }
     if (ch === "|") {
@@ -171,17 +191,55 @@ function displayPath(path: string): string {
   return value === VIRTUAL_ROOT ? "." : value.slice(VIRTUAL_ROOT.length + 1);
 }
 
-function parseRedirection(argv: string[]): {
-  argv: string[];
-  redirect: { append: boolean; path: string } | null;
-} {
-  const index = argv.findIndex((value) => value === ">" || value === ">>");
-  if (index < 0) return { argv, redirect: null };
-  if (index + 2 !== argv.length) throw new Error("redirection must end with > file or >> file");
-  return {
-    argv: argv.slice(0, index),
-    redirect: { append: argv[index] === ">>", path: argv[index + 1]! },
-  };
+interface FileRedirect { append: boolean; path: string }
+interface Redirections {
+  stdout: FileRedirect | null;
+  stderr: FileRedirect | null;
+  /** 2>&1 */
+  stderrToStdout: boolean;
+  /** >&2 */
+  stdoutToStderr: boolean;
+}
+
+const REDIRECT_OP = /^(1>>|1>|2>>|2>|&>>|&>)$/;
+const DUP_OP = /^([12])>>?&([12])$/;
+
+function parseRedirection(argv: string[]): { argv: string[]; redirect: Redirections | null } {
+  const rest: string[] = [];
+  const redirect: Redirections = { stdout: null, stderr: null, stderrToStdout: false, stdoutToStderr: false };
+  let any = false;
+  for (let i = 0; i < argv.length; i++) {
+    const token = argv[i]!;
+    const dup = DUP_OP.exec(token);
+    if (dup) {
+      any = true;
+      if (dup[1] === "2" && dup[2] === "1") redirect.stderrToStdout = true;
+      else if (dup[1] === "1" && dup[2] === "2") redirect.stdoutToStderr = true;
+      continue;
+    }
+    if (REDIRECT_OP.test(token)) {
+      const path = argv[i + 1];
+      if (path === undefined || REDIRECT_OP.test(path) || DUP_OP.test(path)) {
+        throw new Error(`redirection ${token} needs a file`);
+      }
+      any = true;
+      const target = { append: token.endsWith(">>"), path };
+      if (token.startsWith("2")) redirect.stderr = target;
+      else if (token.startsWith("&")) { redirect.stdout = target; redirect.stderr = target; }
+      else redirect.stdout = target;
+      i += 1;
+      continue;
+    }
+    rest.push(token);
+  }
+  return { argv: rest, redirect: any ? redirect : null };
+}
+
+function writeRedirect(fs: WorkspaceFs, target: FileRedirect, data: string): void {
+  if (target.path === "/dev/null") return;
+  const path = physicalPath(target.path);
+  if (target.append) fs.appendFileSync(path, data);
+  else fs.writeFileSync(path, data);
 }
 
 function runOne(fs: WorkspaceFs, rawArgv: string[]): CommandResult {
@@ -339,12 +397,40 @@ function runOne(fs: WorkspaceFs, rawArgv: string[]): CommandResult {
     value = result(1, "", `${command}: ${(error as Error).message}\n`);
   }
 
-  if (parsed.redirect && value.exitCode === 0) {
-    const path = physicalPath(parsed.redirect.path);
-    if (parsed.redirect.append) fs.appendFileSync(path, value.stdout);
-    else fs.writeFileSync(path, value.stdout);
-    try { fs.commitDeviceSync?.("sdmc"); } catch { /* durability is best effort */ }
-    value.stdout = "";
+  const redirect = parsed.redirect;
+  if (redirect) {
+    if (redirect.stderrToStdout) {
+      value.stdout += value.stderr;
+      value.stderr = "";
+    } else if (redirect.stdoutToStderr) {
+      value.stderr += value.stdout;
+      value.stdout = "";
+    }
+    // Files are only written for successful commands (a failed `cat > out`
+    // must not leave an empty file behind); /dev/null always swallows.
+    let wrote = false;
+    if (redirect.stdout && redirect.stderr && redirect.stdout === redirect.stderr) {
+      if (value.exitCode === 0 || redirect.stdout.path === "/dev/null") {
+        writeRedirect(fs, redirect.stdout, value.stdout + value.stderr);
+        value.stdout = "";
+        value.stderr = "";
+        wrote = true;
+      }
+    } else {
+      if (redirect.stdout && (value.exitCode === 0 || redirect.stdout.path === "/dev/null")) {
+        writeRedirect(fs, redirect.stdout, value.stdout);
+        value.stdout = "";
+        wrote = true;
+      }
+      if (redirect.stderr && (value.exitCode === 0 || redirect.stderr.path === "/dev/null")) {
+        writeRedirect(fs, redirect.stderr, value.stderr);
+        value.stderr = "";
+        wrote = true;
+      }
+    }
+    if (wrote) {
+      try { fs.commitDeviceSync?.("sdmc"); } catch { /* durability is best effort */ }
+    }
   }
   return value;
 }

@@ -1,6 +1,6 @@
 {
   "name": "fx-embedded",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Nintendo Switch app embedding the fx agent: fx-term.wasm runs on-device via V8+JSPI, no PC needed",
   "author": "Sérgio P. da Silva",
@@ -17,6 +17,8 @@
     "term:smoke": "bun host/term-smoke.ts",
     "term:stream": "bun host/stream-test.ts",
     "term:workspace": "bun host/workspace-test.ts",
+    "term:redirect": "bun host/workspace-redirect-test.ts",
+    "term:model-persist": "bun host/model-persist-test.ts",
     "term:input": "bun host/input-test.ts",
     "term:model": "bun host/model-cmd-test.ts",
     "term:exit": "bun host/exit-test.ts",

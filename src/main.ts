@@ -22,7 +22,7 @@ import { TermSession, termConfigFrom, localTermAvailable } from "./fxwasm/term.j
 import { flog, flogPath } from "./flog.js";
 
 const CONFIG_PATH = "sdmc:/switch/fx-embedded/config.json";
-const APP_VERSION = "0.1.1";
+const APP_VERSION = "0.1.2";
 
 function log(msg: string): void {
   // Before the term screen takes over, this lands on the runtime's own

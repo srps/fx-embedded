@@ -34,13 +34,13 @@ export type TermConfig = {
   resume?: boolean;
 };
 
-function readWasmSync(): Uint8Array | null {
+function readWasmSync(): { bytes: Uint8Array; path: string } | null {
   const SW: any = (globalThis as any).Switch;
   if (typeof SW?.readFileSync !== "function") return null;
   for (const path of [SD_WASM, ROMFS_WASM]) {
     try {
       const buf = SW.readFileSync(path);
-      if (buf && buf.byteLength > 0) return new Uint8Array(buf);
+      if (buf && buf.byteLength > 0) return { bytes: new Uint8Array(buf), path };
     } catch { /* try next */ }
   }
   return null;
@@ -83,8 +83,9 @@ export class TermSession {
     say("JSPI OK (V8 stack switching)");
 
     say("reading fx-term.wasm…");
-    const wasm = readWasmSync();
-    if (!wasm) {
+    const loaded = readWasmSync();
+    const wasm = loaded?.bytes;
+    if (!loaded || !wasm) {
       say("!fx-term.wasm not found:");
       say(`!  ${ROMFS_WASM} (bundled)`);
       say(`!  ${SD_WASM} (hot-swap)`);
@@ -93,6 +94,13 @@ export class TermSession {
       return;
     }
     say(`+ wasm ${(wasm.byteLength / 1048576).toFixed(1)} MB`);
+    // The SD copy silently beats the NRO's romfs copy. A stale hot-swap file
+    // ran an old fx on device for a day (2026-09-02) while every release
+    // claim assumed the bundled one; say so on screen and in the log.
+    if (loaded.path === SD_WASM) {
+      say(`!wasm from ${SD_WASM} (hot-swap copy overrides the NRO; delete it to run the bundled fx)`);
+    }
+    try { flog(`[term] wasm source ${loaded.path} ${wasm.byteLength}B`); } catch { /* optional */ }
 
     let session: FxTermSession;
     try {
