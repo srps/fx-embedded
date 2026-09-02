@@ -169,14 +169,21 @@ Work found and fixed along the way, in various stages of upstreaming:
   the choice. The synchronous stream-transport pacing stays
   a local patch: the official SDK suspends those imports, so upstream gets
   at most a question about the host contract.
-- **nx.js** (fix branches on the `srps/nx.js` fork, issues first): global
-  `addEventListener` never installed (USB/Bluetooth keyboards were
-  unreachable in every app); fetch abort throwing on locked body streams;
-  unhandled rejection in `Socket#close()` on errored streams; inline swkbd
-  cursor bug (text discarded after the first session) and the applet leak
-  across app exit that can crash the system keyboard — see
-  [swkbd-leak-repro](https://github.com/srps/swkbd-leak-repro). The
-  sleep/wake socket-session reset is filed as an issue before any series.
+- **nx.js** (filed 2026-09-02): global `addEventListener` never installed
+  (USB/Bluetooth keyboards were unreachable in every app,
+  [#419](https://github.com/TooTallNate/nx.js/pull/419)); fetch abort
+  throwing on locked body streams
+  ([#420](https://github.com/TooTallNate/nx.js/pull/420)); unhandled
+  rejection in `Socket#close()` on errored streams
+  ([#421](https://github.com/TooTallNate/nx.js/pull/421)); inline swkbd
+  cursor bug (text discarded after the first session,
+  [#422](https://github.com/TooTallNate/nx.js/pull/422)) and the applet leak
+  across app exit that can crash the system keyboard (issue
+  [#417](https://github.com/TooTallNate/nx.js/issues/417), fix in
+  [#423](https://github.com/TooTallNate/nx.js/pull/423), repro in
+  [swkbd-leak-repro](https://github.com/srps/swkbd-leak-repro)). The
+  sleep/wake socket-session reset is filed as issue
+  [#418](https://github.com/TooTallNate/nx.js/issues/418) before any series.
 
 ## Credits
 
