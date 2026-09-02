@@ -134,6 +134,14 @@ session.write("\r");
 for (let i = 0; i < 40 && tokenPolls < 2; i++) await sleep(500);
 await sleep(2500);
 console.log("--- screen after sign-in:\n" + plain(all.slice(mark)).slice(-1400));
+{
+  // Device clip 2026-09-02: the sign-in card re-rendered as "Preparing sign-in…"
+  // for ~1.6 s between "Signed in to Vercel." and the team adoption.
+  const raw = plain(all.slice(mark));
+  const signedIn = raw.indexOf("Signed in to Vercel.");
+  const flash = signedIn >= 0 && raw.slice(signedIn).includes("Preparing sign-in");
+  console.log(`--- sign-in card after "Signed in": ${flash ? "SHOWN (flash)" : "not shown"}`);
+}
 console.log("--- oauth session after sign-in:", oauthRecord ? new TextDecoder().decode(oauthRecord.bytes) : null);
 console.log("--- config store:", Object.fromEntries(configMap));
 

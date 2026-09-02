@@ -1,5 +1,5 @@
 diff --git a/src/core/app/app_auth_runtime.zig b/src/core/app/app_auth_runtime.zig
-index 3cfa808f..ad0d1c89 100644
+index 3cfa808f..7114c9b2 100644
 --- a/src/core/app/app_auth_runtime.zig
 +++ b/src/core/app/app_auth_runtime.zig
 @@ -332,6 +332,7 @@ pub fn Runtime(comptime App: type) type {
@@ -10,7 +10,19 @@ index 3cfa808f..ad0d1c89 100644
              if (!app.auth.apiKeyEntryActive()) return false;
              switch (byte) {
                  3, 4 => _ = app.auth.popPickerStage(app.alloc),
-@@ -388,17 +389,17 @@ pub fn Runtime(comptime App: type) type {
+@@ -378,6 +379,11 @@ pub fn Runtime(comptime App: type) type {
+                     defer owned.deinit(app.alloc);
+                     switch (owned) {
+                         .vercel => |*selection| {
++                            // With at most one team the sign-in card has nothing
++                            // left to show; close it before the credential load
++                            // (and its model catalog warmup) so it does not sit
++                            // on screen in its reset state meanwhile.
++                            if (selection.teams.items.len <= 1) app.auth.closePicker(app.alloc);
+                             if (!try selectCredentialSource(app, .fx_login)) {
+                                 _ = app.auth.popPickerStage(app.alloc);
+                                 try writeAuthNotice(app, .{
+@@ -388,17 +394,17 @@ pub fn Runtime(comptime App: type) type {
                                  return;
                              }
                              rememberCredentialSource(app, .fx_login);
@@ -27,24 +39,22 @@ index 3cfa808f..ad0d1c89 100644
                              });
 +
 +                            switch (selection.teams.items.len) {
-+                                0 => app.auth.closePicker(app.alloc),
++                                0 => {},
 +                                1 => try adoptOnlyTeam(app, selection),
 +                                else => app.auth.openTeamPicker(app.alloc, selection),
 +                            }
                          },
                          .chatgpt => {
                              try finishSubscriptionSignIn(app, .codex);
-@@ -413,6 +414,37 @@ pub fn Runtime(comptime App: type) type {
+@@ -413,6 +419,34 @@ pub fn Runtime(comptime App: type) type {
              }
          }
  
-+        /// `fx login` picks the only team without asking; the interactive
-+        /// sign-in does the same so the first model call carries a team.
++        /// Mirrors `fx login`, which picks the only team without asking.
 +        fn adoptOnlyTeam(app: *App, selection: anytype) !void {
 +            const team = selection.teams.items[0];
 +            var selected_team = selection.select(app.alloc, 0) catch |err| {
 +                debug_trace.logf("auth", "only team adopt failed err={s}", .{@errorName(err)});
-+                app.auth.closePicker(app.alloc);
 +                try writeAuthNotice(app, .{
 +                    .topic = "auth",
 +                    .tone = .warning,
@@ -55,7 +65,6 @@ index 3cfa808f..ad0d1c89 100644
 +            defer selected_team.deinit(app.alloc);
 +
 +            applyCredentialChange(app, app.auth.adoptSelectedTeam(app.alloc, &selected_team));
-+            app.auth.closePicker(app.alloc);
 +            const body = try std.fmt.allocPrint(
 +                app.alloc,
 +                "Using Vercel team {s} ({s}).",
@@ -72,7 +81,7 @@ index 3cfa808f..ad0d1c89 100644
          fn finishSubscriptionSignIn(
              app: *App,
              provider: model_provider.ProviderId,
-@@ -1602,7 +1634,7 @@ const TestAuth = struct {
+@@ -1602,7 +1636,7 @@ const TestAuth = struct {
          return &self.team_selection;
      }
  
